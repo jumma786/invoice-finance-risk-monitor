@@ -1,0 +1,12 @@
+# Normalise line endings: store text as LF in the repo, check out native locally
+* text=auto eol=lf
+
+# Explicitly treat these as text
+*.py    text
+*.md    text
+*.html  text
+*.csv   text
+*.txt   text
+
+# Binary — never touch line endings
+*.xlsx  binary
