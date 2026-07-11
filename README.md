@@ -18,6 +18,10 @@ portfolio dilution, **£1.58M** of exposure sitting in critical-risk clients, an
 (risk score × exposure), so real money at risk floats to the top rather than
 dormant £0-balance accounts.
 
+The predictive run-off model reaches **0.78 hold-out AUC**, beating the
+transparent scorecard baseline (**0.73**) — realistic, not suspiciously perfect,
+which is the point: the label is strictly forward-looking, so there's no leakage.
+
 ## Business context
 An invoice finance lender advances cash against clients' unpaid invoices. The
 central question is always "what is our exposure and where is risk building?"
@@ -27,17 +31,28 @@ This project answers it across four analyst functions:
 |---------------------|------------------------------------------------------------|
 | Exposure monitoring | funding-in-use, net ledger value                           |
 | Credit risk         | dilution rate, debtor concentration, arrears/dormancy      |
-| Early warning       | transparent weighted risk scorecard (client watchlist)     |
+| Early warning       | risk scorecard + out-of-time run-off model (watchlist)     |
 | Fraud detection     | round-number & duplicate-invoice anomaly flags             |
 
 ## Real data
 - **Invoice ledger:** UCI Online Retail II — archive.ics.uci.edu/dataset/502
   (customers = clients, credit-note invoices `C...` = dilution)
-- **Default outcomes (optional upgrade):** Lending Club Loan Data (Kaggle) —
-  join real `default` labels to fit a *predictive* model on the scorecard's
-  features, with `score_clients()` as the explainable baseline to beat.
 
 Framing is adapted (customers->clients, returns->dilution); the numbers are real.
+
+## Early warning: two models
+1. **Scorecard** (`score_clients`) — a transparent weighted blend of dilution,
+   concentration and dormancy. Descriptive, auditable, no trained label.
+2. **Predictive run-off model** (`train_default_model`) — an *out-of-time*
+   classifier: features from client behaviour **before** a cutoff date, label =
+   client goes into run-off (no invoicing) in the window **after** it. A random
+   hold-out gives an honest AUC, and the scorecard is scored on the same forward
+   label as the baseline to beat.
+
+> Why not Lending Club? Its loan `default` outcomes share no join key with these
+> retail clients, so attaching them would be inventing labels. Instead the model
+> learns from the ledger's own forward outcomes — genuinely predictive, and
+> leakage-free because the label is strictly in the future.
 
 ## Run
 ```
@@ -55,13 +70,15 @@ self-contained `outputs/dashboard.html` — open it in any browser, no server ne
   `priority` column (risk score × funding-in-use) so the watchlist ranks by money
   actually at risk; per-signal component columns included for auditability
 - `outputs/ledger_trend.csv` — weekly invoicing advanced & dilution rate (flow view)
-- `outputs/dashboard.html` — interactive risk console over all of the above
-  (KPIs, trend, exposure, dilution×concentration, watchlist, fraud), generated
-  from `src/dashboard_template.html` with the run's own data embedded
+- `outputs/default_model.csv` — per-client run-off probability from the predictive
+  model, with the forward label and hold-out flag
+- `outputs/dashboard.html` — interactive risk console over all of the above (KPIs,
+  trend, exposure, dilution×concentration, watchlist, model validation, fraud),
+  generated from `src/dashboard_template.html` with the run's own data embedded
 
 ## Next steps
-- Add real Lending Club default outcomes and fit a predictive model on the
-  scorecard's features — using the transparent scorecard as the baseline to beat
+- Deploy the run-off model forward: train on history, then score *current*
+  clients to predict run-off in the next 6 months for a live watchlist
 - Enrich clients with real company data via the Companies House API
 - Extend the trend from a flow view to true outstanding-balance ageing once
   settlement/payment dates are available

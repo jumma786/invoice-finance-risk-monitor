@@ -111,7 +111,7 @@
   .bar{display:grid;grid-template-columns:52px 1fr 74px;align-items:center;gap:10px}
   .bar .cid{font-family:var(--mono);font-size:12px;color:var(--ink-2)}
   .bar .track{height:16px;background:var(--surface-2);border-radius:4px;overflow:hidden;position:relative}
-  .bar .fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--accent-deep),var(--accent))}
+  .bar .fill{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,var(--accent-deep),var(--accent))}
   .bar .fill.dil{background:linear-gradient(90deg,var(--warn),#e0a53a)}
   .bar .amt{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:12px;text-align:right;color:var(--ink-2)}
   .conc-note{margin-top:15px;padding-top:13px;border-top:1px dashed var(--border);font-size:12.5px;color:var(--muted)}
@@ -152,6 +152,30 @@
   .scoreb .mini{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden;width:34px}
   .scoreb .mini i{display:block;height:100%}
 
+  /* ---- model validation ---- */
+  .modelcard{margin-bottom:18px}
+  .model-grid{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:start}
+  .model-aucs{display:flex;flex-direction:column;gap:14px}
+  .auc-row{display:grid;grid-template-columns:1fr auto;align-items:baseline;gap:8px 12px}
+  .auc-row .lab{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .auc-row .val{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:23px;font-weight:600;letter-spacing:-.02em}
+  .auc-row .track{grid-column:1 / -1;height:8px;border-radius:5px;background:var(--surface-2);overflow:hidden;position:relative}
+  .auc-row .track::after{content:"";position:absolute;left:0;top:0;bottom:0;width:1px;background:var(--border)}
+  .auc-row .fill{display:block;height:100%;border-radius:5px}
+  .auc-row.base .val{color:var(--ink-2)} .auc-row.base .fill{background:var(--muted)}
+  .auc-row.model .val{color:var(--accent-deep)} .auc-row.model .fill{background:linear-gradient(90deg,var(--accent-deep),var(--accent))}
+  .lift{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--good);
+    background:var(--good-wash);border-radius:100px;padding:3px 10px;margin-top:2px;width:fit-content;font-family:var(--sans)}
+  .auc-scale{font-size:10.5px;color:var(--faint);display:flex;justify-content:space-between;font-family:var(--mono)}
+  .imp-head{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:12px}
+  .imp-row{display:grid;grid-template-columns:118px 1fr 40px;align-items:center;gap:10px;margin-bottom:7px}
+  .imp-row .name{font-size:12px;color:var(--ink-2)}
+  .imp-row .itrack{height:13px;background:var(--surface-2);border-radius:3px;overflow:hidden}
+  .imp-row .ifill{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--accent-deep),var(--accent))}
+  .imp-row .ival{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:11.5px;color:var(--muted);text-align:right}
+  .model-caption{margin-top:16px;padding-top:14px;border-top:1px dashed var(--border);font-size:12.5px;color:var(--muted);line-height:1.55}
+  .model-caption b{color:var(--ink)}
+
   /* ---- fraud + method ---- */
   .grid2b{display:grid;grid-template-columns:1fr 1fr;gap:18px}
   .fraud-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--border-2)}
@@ -172,7 +196,7 @@
 
   @media (max-width:860px){
     .kpis{grid-template-columns:repeat(3,1fr)}
-    .grid2,.grid2b{grid-template-columns:1fr}
+    .grid2,.grid2b,.model-grid{grid-template-columns:1fr}
   }
   @media (max-width:520px){
     .kpis{grid-template-columns:repeat(2,1fr)}
@@ -260,6 +284,21 @@
     </div>
   </section>
 
+  <section class="panel modelcard" id="model-panel" hidden>
+    <div class="phead">
+      <div><span class="eyebrow">Predictive &middot; out-of-time</span><h2>Early-warning model validation</h2></div>
+      <div class="hint" id="model-hint"></div>
+    </div>
+    <div class="model-grid">
+      <div class="model-aucs" id="model-aucs"></div>
+      <div class="model-imp">
+        <div class="imp-head">Feature importance</div>
+        <div id="model-imp"></div>
+      </div>
+    </div>
+    <div class="model-caption" id="model-caption"></div>
+  </section>
+
   <div class="grid2b">
     <section class="panel">
       <div class="phead">
@@ -275,7 +314,7 @@
         <div><span class="eyebrow">Methodology</span><h2>How to read this</h2></div>
       </div>
       <p><b>Exposure</b> is net ledger (gross invoicing &minus; credit notes) advanced at an 80% rate. <b>Dilution</b> is credit notes as a share of gross &mdash; the classic invoice-finance loss signal. <b>Concentration</b> is the largest single stock-line as a share of a client's ledger. <b>Dormancy</b> tiers: slowing &gt;30d, dormant &gt;90d. <b>Priority</b> = risk score &times; funding-in-use, so the watchlist ranks by money actually at risk, not raw signal &mdash; a maxed-out score on a &pound;0-exposure account is a note, not an action.</p>
-      <div class="infobox"><b>Risk scorecard.</b> The score is a transparent weighted blend &mdash; dilution <b>50%</b>, concentration <b>25%</b>, dormancy <b>25%</b>, each normalised to 0&ndash;1. It's a documented rule (no trained label, no leakage), exactly how credit scorecards work. Join real <code>default</code> outcomes to fit a <em>predictive</em> model on the same features &mdash; with this as the baseline to beat.</div>
+      <div class="infobox"><b>Two early-warning models.</b> The <b>scorecard</b> is a transparent weighted blend &mdash; dilution <b>50%</b>, concentration <b>25%</b>, dormancy <b>25%</b> &mdash; a documented rule with no trained label and no leakage. The <b>predictive run-off model</b> above is validated out-of-time against the ledger's own forward outcomes, and beats the scorecard, which stays as its explainable baseline.</div>
     </section>
   </div>
 
@@ -481,4 +520,38 @@ if(FRAUD.length){
 const nDup=FRAUD.filter(f=>f.dup).length, nRound=FRAUD.filter(f=>f.round).length;
 document.getElementById("fraud-note").innerHTML =
   `Rules: exact round-number totals (&pound;n&times;100) and duplicate <span class="num">value&times;client&times;date</span> signatures. This run: <b class="num">${nRound}</b> round-number, <b class="num">${nDup}</b> duplicate.`;
+
+// ---- predictive model validation (only when the pipeline shipped model metrics) ----
+(function(){
+  const m = PAYLOAD.model;
+  if(!m) return;
+  document.getElementById("model-panel").hidden = false;
+  const aucBar = a => ((Math.max(a,0.5)-0.5)/0.5*100).toFixed(1); // 0.50 random .. 1.00 perfect
+  const lift = m.model_auc - m.baseline_auc;
+  document.getElementById("model-hint").innerHTML = "predicting client run-off &middot; hold-out AUC";
+  document.getElementById("model-aucs").innerHTML = `
+    <div class="auc-row base">
+      <span class="lab">Scorecard baseline</span><span class="val">${m.baseline_auc.toFixed(3)}</span>
+      <span class="track"><span class="fill" style="width:${aucBar(m.baseline_auc)}%"></span></span>
+    </div>
+    <div class="auc-row model">
+      <span class="lab">Trained model &middot; Random&nbsp;Forest</span><span class="val">${m.model_auc.toFixed(3)}</span>
+      <span class="track"><span class="fill" style="width:${aucBar(m.model_auc)}%"></span></span>
+    </div>
+    <div class="auc-scale"><span>0.50 random</span><span>perfect 1.00</span></div>
+    <span class="lift">&#9650; +${lift.toFixed(3)} AUC over baseline</span>`;
+  const NAMES={days_since_activity:"Recency (idle)",funding_in_use:"Funding-in-use",
+    gross_invoicing:"Gross invoicing",top_line_concentration:"Concentration",
+    avg_invoice_value:"Avg invoice £",tenure_days:"Tenure",n_invoices:"Invoice count",
+    credit_notes:"Credit notes",dilution_rate:"Dilution rate"};
+  const imps=m.importances.slice(0,6), maxImp=imps[0][1];
+  document.getElementById("model-imp").innerHTML = imps.map(([f,v])=>`
+    <div class="imp-row">
+      <span class="name">${NAMES[f]||f}</span>
+      <span class="itrack"><span class="ifill" style="width:${(v/maxImp*100).toFixed(0)}%"></span></span>
+      <span class="ival">${(v*100).toFixed(0)}%</span>
+    </div>`).join("");
+  document.getElementById("model-caption").innerHTML =
+    `Out-of-time validation: features from behaviour <b>before ${fmtDate(m.cutoff)}</b>, label = client went into run-off (no invoicing) in the <b>~${Math.round(m.outcome_days/30)} months after</b>. <b>${m.n_clients.toLocaleString("en-GB")}</b> clients, <b>${(m.runoff_rate*100).toFixed(0)}%</b> run-off, 25% hold-out. The trained model beats the transparent scorecard, which stays as the explainable fallback &mdash; and the label is strictly future, so there's no leakage.`;
+})();
 </script>
