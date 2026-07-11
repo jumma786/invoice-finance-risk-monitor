@@ -1,6 +1,9 @@
 # Real dataset — large & externally licensed; drop in locally to run at full scale
 data/online_retail_II.xlsx
 
+# transient run log
+outputs/run_full.log
+
 # Python
 __pycache__/
 *.py[cod]

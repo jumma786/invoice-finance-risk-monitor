@@ -228,7 +228,7 @@
     <section class="panel">
       <div class="phead">
         <div><span class="eyebrow">Credit risk</span><h2>Dilution &times; concentration</h2></div>
-        <div class="hint">bubble = exposure<br>colour = risk score</div>
+        <div class="hint">bubble = exposure &middot; colour = risk<br>funded clients only</div>
       </div>
       <div class="scatter-wrap"><svg class="scatter" id="scatter" viewBox="0 0 420 300" role="img" aria-label="Scatter of dilution rate versus debtor concentration"></svg></div>
       <div class="legend">
@@ -241,19 +241,18 @@
 
   <section class="panel tablecard">
     <div class="phead">
-      <div><span class="eyebrow">Early warning</span><h2>Client watchlist &mdash; ranked by default-risk score</h2></div>
+      <div><span class="eyebrow">Early warning</span><h2>Client watchlist &mdash; ranked by priority (risk &times; exposure)</h2></div>
       <div class="hint" id="wl-hint"></div>
     </div>
     <div class="twrap">
       <table>
         <thead><tr>
           <th class="l">Client</th>
+          <th>Priority</th>
           <th>Funding&nbsp;in&nbsp;use</th>
-          <th>Net&nbsp;ledger</th>
           <th>Dilution</th>
           <th>Concen.</th>
           <th>Dormancy</th>
-          <th>Invoices</th>
           <th>Risk&nbsp;score</th>
         </tr></thead>
         <tbody id="wl-body"></tbody>
@@ -275,7 +274,7 @@
       <div class="phead">
         <div><span class="eyebrow">Methodology</span><h2>How to read this</h2></div>
       </div>
-      <p><b>Exposure</b> is net ledger (gross invoicing &minus; credit notes) advanced at an 80% rate. <b>Dilution</b> is credit notes as a share of gross &mdash; the classic invoice-finance loss signal. <b>Concentration</b> is the largest single stock-line as a share of a client's ledger. <b>Dormancy</b> tiers: slowing &gt;30d, dormant &gt;90d.</p>
+      <p><b>Exposure</b> is net ledger (gross invoicing &minus; credit notes) advanced at an 80% rate. <b>Dilution</b> is credit notes as a share of gross &mdash; the classic invoice-finance loss signal. <b>Concentration</b> is the largest single stock-line as a share of a client's ledger. <b>Dormancy</b> tiers: slowing &gt;30d, dormant &gt;90d. <b>Priority</b> = risk score &times; funding-in-use, so the watchlist ranks by money actually at risk, not raw signal &mdash; a maxed-out score on a &pound;0-exposure account is a note, not an action.</p>
       <div class="infobox"><b>Risk scorecard.</b> The score is a transparent weighted blend &mdash; dilution <b>50%</b>, concentration <b>25%</b>, dormancy <b>25%</b>, each normalised to 0&ndash;1. It's a documented rule (no trained label, no leakage), exactly how credit scorecards work. Join real <code>default</code> outcomes to fit a <em>predictive</em> model on the same features &mdash; with this as the baseline to beat.</div>
     </section>
   </div>
@@ -298,8 +297,8 @@ const DORM_SLOW = 30, DORM_DEAD = 90;
 const CONC_HOT = 0.60, DIL_HOT = 0.10;
 const ADVANCE_RATE = 0.80;
 
-// clients: [id, gross, credits, ninv, conc, net, fund, dil, days, score]
-const cols = PAYLOAD.clients.map(r=>({id:r[0],gross:r[1],credits:r[2],ninv:r[3],conc:r[4],net:r[5],fund:r[6],dil:r[7],days:r[8],score:r[9]}));
+// clients: [id, gross, credits, ninv, conc, net, fund, dil, days, score, priority]
+const cols = PAYLOAD.clients.map(r=>({id:r[0],gross:r[1],credits:r[2],ninv:r[3],conc:r[4],net:r[5],fund:r[6],dil:r[7],days:r[8],score:r[9],priority:r[10]}));
 // trend: [period, gross, credits, advanced, dilution_rate]
 const TREND = PAYLOAD.trend.map(r=>({period:r[0],gross:r[1],credits:r[2],adv:r[3],dil:r[4]}));
 const FRAUD = PAYLOAD.fraud;
@@ -326,20 +325,22 @@ const totalNet  = sum(cols,c=>c.net);
 const totalGross= sum(cols,c=>c.gross);
 const totalCred = sum(cols,c=>c.credits);
 const portDilution = totalGross>0 ? totalCred/totalGross : 0;
-const highRisk = cols.filter(c=>c.score>=RISK_WATCH).length;
 const concClients = cols.filter(c=>c.conc>=CONC_HOT).length;
+// critical-risk exposure: money advanced to clients scoring in the Critical band
+const critExposure = sum(cols.filter(c=>c.score>=RISK_CRIT), c=>c.fund);
+const critCount = cols.filter(c=>c.score>=RISK_CRIT && c.fund>0).length;
 
 function tier(score){ return score>=RISK_CRIT?"crit": score>=RISK_WATCH?"warn":"low"; }
 function tierColor(t){ return t==="crit"?C.get("--crit"):t==="warn"?C.get("--warn"):C.get("--accent"); }
 
 // ---- KPIs ----
 const kpis = [
-  {lab:"Portfolio exposure", val:gbp(totalFund), sub:"total funding-in-use", cls:""},
+  {lab:"Portfolio exposure", val:gbp(totalFund), sub:cols.length.toLocaleString("en-GB")+" clients funded", cls:""},
   {lab:"Net ledger value", val:gbp(totalNet), sub:"gross − credit notes", cls:""},
   {lab:"Portfolio dilution", val:pct(portDilution), sub:gbp(totalCred)+" credit notes", cls:""},
-  {lab:"High-risk clients", val:highRisk+"<small> / "+cols.length+"</small>", sub:"risk score ≥ "+RISK_WATCH.toFixed(2), cls:"risk"},
-  {lab:"Concentration ≥60%", val:concClients+"<small> / "+cols.length+"</small>", sub:"single-line ledgers", cls:"flag"},
-  {lab:"Fraud flags", val:String(FRAUD.length), sub:"invoices flagged", cls:"flag"},
+  {lab:"Critical-risk exposure", val:gbp(critExposure), sub:critCount.toLocaleString("en-GB")+" clients, score ≥ "+RISK_CRIT.toFixed(2), cls:"risk"},
+  {lab:"Concentration ≥60%", val:concClients.toLocaleString("en-GB"), sub:"single-line ledgers", cls:"flag"},
+  {lab:"Fraud flags", val:FRAUD.length.toLocaleString("en-GB"), sub:"invoices flagged", cls:"flag"},
 ];
 document.getElementById("kpis").innerHTML = kpis.map(k=>`
   <div class="kpi ${k.cls}"><span class="tick"></span>
@@ -402,37 +403,45 @@ const top10share = totalFund>0 ? sum(top10,c=>c.fund)/totalFund : 0;
 document.getElementById("conc-note").innerHTML =
   `Top 10 clients hold <b>${pct(top10share,0)}</b> of portfolio exposure (<b>${gbp(sum(top10,c=>c.fund))}</b> of ${gbp(totalFund)}). Amber bars carry dilution &gt;${(DIL_HOT*100).toFixed(0)}%.`;
 
-// ---- scatter: dilution (x) vs concentration (y) ----
+// ---- scatter: dilution (x) vs concentration (y), funded clients only ----
 (function(){
+  const pts=cols.filter(c=>c.fund>0);
+  if(!pts.length){document.getElementById("scatter").innerHTML="";return;}
   const W=420,H=300, mL=42,mR=14,mT=12,mB=38;
   const pw=W-mL-mR, ph=H-mT-mB;
-  const xmax=0.40, ymax=1.0;
+  // data-driven x axis (funded clients always have dilution < 1); nice-round up
+  const maxDil=Math.max(...pts.map(c=>c.dil));
+  const xmax=Math.min(1.0, Math.max(0.4, Math.ceil(maxDil/0.1)*0.1)), ymax=1.0;
+  const maxF=Math.max(...pts.map(c=>c.fund),1);
   const X=v=>mL+Math.min(v,xmax)/xmax*pw;
   const Y=v=>mT+ph-Math.min(v,ymax)/ymax*ph;
-  const R=f=>Math.sqrt(f/maxFund)*13+3;
+  const R=f=>Math.sqrt(f/maxF)*12+2.2;
+  const xticks=[0,.25,.5,.75,1].map(k=>+(k*xmax).toFixed(3));
   let s="";
   s+=`<rect class="qzone" x="${mL}" y="${Y(ymax)}" width="${pw}" height="${(Y(CONC_HOT)-mT).toFixed(1)}"/>`;
-  [0,0.1,0.2,0.3,0.4].forEach(t=>{ s+=`<line class="gridline" x1="${X(t)}" y1="${mT}" x2="${X(t)}" y2="${mT+ph}"/>`;
-    s+=`<text class="axtick" x="${X(t)}" y="${mT+ph+14}" text-anchor="middle">${(t*100).toFixed(0)}%</text>`; });
+  xticks.forEach(t=>{ s+=`<line class="gridline" x1="${X(t).toFixed(1)}" y1="${mT}" x2="${X(t).toFixed(1)}" y2="${mT+ph}"/>`;
+    s+=`<text class="axtick" x="${X(t).toFixed(1)}" y="${mT+ph+14}" text-anchor="middle">${(t*100).toFixed(0)}%</text>`; });
   [0,0.25,0.5,0.75,1.0].forEach(t=>{ s+=`<line class="gridline" x1="${mL}" y1="${Y(t)}" x2="${mL+pw}" y2="${Y(t)}"/>`;
     s+=`<text class="axtick" x="${mL-7}" y="${Y(t)+3}" text-anchor="end">${(t*100).toFixed(0)}%</text>`; });
   s+=`<text class="axlab" x="${mL+pw/2}" y="${H-4}" text-anchor="middle">Dilution rate →</text>`;
   s+=`<text class="axlab" transform="translate(11,${mT+ph/2}) rotate(-90)" text-anchor="middle">Debtor concentration →</text>`;
-  const ordered=[...cols].sort((a,b)=>a.score-b.score);
+  // draw low-risk first so hot points sit on top
+  const ordered=[...pts].sort((a,b)=>a.score-b.score);
   ordered.forEach(c=>{
     const col=tierColor(tier(c.score));
-    const op = c.score>=RISK_WATCH?0.95: (c.dil>0||c.conc>=CONC_HOT)?0.6:0.4;
-    s+=`<circle class="dot-pt" cx="${X(c.dil).toFixed(1)}" cy="${Y(c.conc).toFixed(1)}" r="${R(c.fund).toFixed(1)}" fill="${col}" opacity="${op}"><title>Client ${c.id} · dilution ${pct(c.dil)} · concentration ${pct(c.conc,0)} · risk ${c.score.toFixed(3)} · ${gbp(c.fund)}</title></circle>`;
+    const op = c.score>=RISK_CRIT?0.9: c.score>=RISK_WATCH?0.6:0.32;
+    s+=`<circle class="dot-pt" cx="${X(c.dil).toFixed(1)}" cy="${Y(c.conc).toFixed(1)}" r="${R(c.fund).toFixed(1)}" fill="${col}" opacity="${op}"><title>Client ${c.id} · dilution ${pct(c.dil)} · concentration ${pct(c.conc,0)} · risk ${c.score.toFixed(3)} · ${gbp(c.fund)} funded</title></circle>`;
   });
-  const hot=[...cols].sort((a,b)=>b.score-a.score)[0];
-  if(hot && hot.score>=RISK_WATCH)
-    s+=`<text x="${(X(hot.dil)+10).toFixed(1)}" y="${(Y(hot.conc)+3).toFixed(1)}" font-size="10.5" font-family="ui-monospace,monospace" fill="${C.get('--crit')}" font-weight="600">${hot.id}</text>`;
+  // label the highest-priority funded client
+  const hot=[...pts].sort((a,b)=>b.priority-a.priority)[0];
+  if(hot)
+    s+=`<text x="${(X(hot.dil)+9).toFixed(1)}" y="${(Y(hot.conc)+3).toFixed(1)}" font-size="10.5" font-family="ui-monospace,monospace" fill="${C.get('--crit')}" font-weight="600">${hot.id}</text>`;
   document.getElementById("scatter").innerHTML=s;
 })();
 
-// ---- watchlist ----
-const wl = [...cols].sort((a,b)=>b.score-a.score).slice(0,12);
-document.getElementById("wl-hint").innerHTML = `showing top 12 of ${cols.length} &middot; sorted by score`;
+// ---- watchlist (ranked by priority = risk-weighted exposure) ----
+const wl = [...cols].sort((a,b)=>b.priority-a.priority).slice(0,12);
+document.getElementById("wl-hint").innerHTML = `top 12 of ${cols.length.toLocaleString("en-GB")} &middot; priority = risk score &times; funding-in-use`;
 document.getElementById("wl-body").innerHTML = wl.map(c=>{
   const col=tierColor(tier(c.score));
   const pill = c.score>=RISK_CRIT?`<span class="pill crit">Critical</span>`
@@ -442,12 +451,11 @@ document.getElementById("wl-body").innerHTML = wl.map(c=>{
   const barw=Math.max(c.score*100,3).toFixed(0);
   return `<tr>
     <td class="l cid"><span class="stripe" style="background:${col}"></span>${c.id}</td>
+    <td class="mono-cell" style="font-weight:600;color:var(--ink)">${gbp(c.priority)}</td>
     <td class="mono-cell">${gbp(c.fund)}</td>
-    <td class="mono-cell">${gbp(c.net)}</td>
     <td class="mono-cell" ${c.dil>DIL_HOT?`style="color:var(--warn);font-weight:600"`:``}>${c.dil>0?pct(c.dil):"—"}</td>
     <td class="mono-cell" ${c.conc>=CONC_HOT?`style="color:var(--crit);font-weight:600"`:``}>${pct(c.conc,0)}</td>
     <td>${dorm}</td>
-    <td class="mono-cell">${c.ninv}</td>
     <td><span class="scoreb"><span class="mini"><i style="width:${barw}%;background:${col}"></i></span><span class="mono-cell" style="color:${col};font-weight:600">${c.score.toFixed(3)}</span></span> ${pill}</td>
   </tr>`;
 }).join("");

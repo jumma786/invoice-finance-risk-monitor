@@ -37,8 +37,9 @@ self-contained `outputs/dashboard.html` — open it in any browser, no server ne
 ## Outputs
 - `outputs/client_risk_metrics.csv` — per-client exposure & risk metrics
 - `outputs/fraud_flags.csv` — flagged suspicious invoices
-- `outputs/client_watchlist.csv` — clients ranked by scorecard risk score
-  (with per-signal component columns for auditability)
+- `outputs/client_watchlist.csv` — clients scored by the risk scorecard, with a
+  `priority` column (risk score × funding-in-use) so the watchlist ranks by money
+  actually at risk; per-signal component columns included for auditability
 - `outputs/ledger_trend.csv` — weekly invoicing advanced & dilution rate (flow view)
 - `outputs/dashboard.html` — interactive risk console over all of the above
   (KPIs, trend, exposure, dilution×concentration, watchlist, fraud), generated

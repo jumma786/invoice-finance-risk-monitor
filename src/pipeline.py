@@ -58,12 +58,14 @@ def client_risk_metrics(df):
     n_invoices = df.groupby("Customer ID")["Invoice"].nunique().rename("n_invoices")
     last_activity = df.groupby("Customer ID")["InvoiceDate"].max().rename("last_activity")
 
-    # debtor concentration proxy: largest single stock line as % of client ledger
-    line_share = (df[~df.IsCreditNote]
-                  .groupby(["Customer ID", "StockCode"])["LineValue"].sum()
-                  .groupby(level=0)
-                  .apply(lambda s: s.max() / s.sum() if s.sum() > 0 else np.nan)
-                  .rename("top_line_concentration"))
+    # debtor concentration proxy: largest single stock line as % of client ledger.
+    # Vectorised (max/sum over the per-client stock-line totals) so it scales to
+    # the full ~1M-row ledger instead of a per-group Python apply.
+    line = (df[~df.IsCreditNote]
+            .groupby(["Customer ID", "StockCode"])["LineValue"].sum())
+    grp = line.groupby(level=0)
+    gsum = grp.sum()
+    line_share = (grp.max() / gsum.where(gsum > 0)).rename("top_line_concentration")
 
     m = pd.concat([gross, credits, n_invoices, last_activity, line_share], axis=1)
     m["credit_notes"] = m["credit_notes"].fillna(0)
@@ -138,6 +140,11 @@ def score_clients(metrics):
     d["risk_score"] = (d["dilution_component"]
                        + d["concentration_component"]
                        + d["dormancy_component"]).round(4)
+
+    # priority = risk-weighted exposure (expected-loss style). This is what a
+    # lender acts on: a maxed-out score on a client with £0 advanced is a note,
+    # not an action; the money at risk sits where score AND funding are high.
+    d["priority"] = (d["risk_score"] * d["funding_in_use"]).round(2)
     return d
 
 
@@ -178,7 +185,7 @@ def build_dashboard(scored, fraud, trend, n_rows, asof, dataset_label):
         int(r["Customer ID"]), num(r["gross_invoicing"], 2), num(r["credit_notes"], 2),
         int(r["n_invoices"]), num(r["top_line_concentration"], 6), num(r["net_ledger"], 2),
         num(r["funding_in_use"], 2), num(r["dilution_rate"], 6),
-        int(r["days_since_activity"]), num(r["risk_score"], 4),
+        int(r["days_since_activity"]), num(r["risk_score"], 4), num(r["priority"], 2),
     ] for _, r in scored.iterrows()]
 
     fraud_recs = [{
@@ -227,10 +234,11 @@ if __name__ == "__main__":
     scored.to_csv(OUT / "client_watchlist.csv", index=False)
     print("=== Early-warning risk scorecard ===")
     print("Weights: " + ", ".join(f"{k} {v:.0%}" for k, v in SCORE_WEIGHTS.items()))
-    print("\nTop 10 highest-risk clients (watchlist):")
-    print(scored.sort_values("risk_score", ascending=False)
+    print("\nTop 10 by priority (risk-weighted exposure):")
+    print(scored.sort_values("priority", ascending=False)
           [["Customer ID", "funding_in_use", "dilution_rate",
-            "days_since_activity", "risk_score"]]
+            "top_line_concentration", "days_since_activity",
+            "risk_score", "priority"]]
           .head(10).to_string(index=False))
 
     trend = ledger_trend(df)
