@@ -1,0 +1,3 @@
+Invoice,client,value,n_lines,flag_round_number,date,flag_duplicate
+1013010,14010,100.0,1,True,2011-01-15,False
+1013033,14033,100.0,1,True,2011-01-15,False

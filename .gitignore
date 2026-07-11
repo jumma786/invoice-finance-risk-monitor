@@ -1,0 +1,16 @@
+# Real dataset — large & externally licensed; drop in locally to run at full scale
+data/online_retail_II.xlsx
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

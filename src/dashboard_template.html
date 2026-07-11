@@ -1,0 +1,472 @@
+<title>Invoice Finance Risk Monitor</title>
+<style>
+  :root{
+    --ground:#eef2f4; --surface:#ffffff; --surface-2:#f6f8f9;
+    --ink:#14212b; --ink-2:#3d4e59; --muted:#6b7c87; --faint:#93a3ac;
+    --border:#dde5e9; --border-2:#e8edf0;
+    --accent:#0d7d88; --accent-deep:#095a63; --accent-wash:#e3f0f1;
+    --good:#2f9e6f; --good-wash:#e5f2ec;
+    --warn:#c9820f; --warn-wash:#f8eed8;
+    --crit:#c04a2f; --crit-wash:#f7e4de;
+    --grid:#eef2f4;
+    --shadow:0 1px 2px rgba(20,33,43,.04),0 4px 16px rgba(20,33,43,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --ground:#0a1218; --surface:#121e26; --surface-2:#0f1a21;
+      --ink:#e9eff2; --ink-2:#bccad2; --muted:#8698a3; --faint:#5f7078;
+      --border:#22333d; --border-2:#1a2831;
+      --accent:#2bacb8; --accent-deep:#7fd0d7; --accent-wash:#0f2a2e;
+      --good:#43b985; --good-wash:#122a22;
+      --warn:#e0a53a; --warn-wash:#2c2413;
+      --crit:#e06a4c; --crit-wash:#2e1913;
+      --grid:#1a2831;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.28);
+    }
+  }
+  :root[data-theme="light"]{
+    --ground:#eef2f4; --surface:#ffffff; --surface-2:#f6f8f9;
+    --ink:#14212b; --ink-2:#3d4e59; --muted:#6b7c87; --faint:#93a3ac;
+    --border:#dde5e9; --border-2:#e8edf0;
+    --accent:#0d7d88; --accent-deep:#095a63; --accent-wash:#e3f0f1;
+    --good:#2f9e6f; --good-wash:#e5f2ec;
+    --warn:#c9820f; --warn-wash:#f8eed8;
+    --crit:#c04a2f; --crit-wash:#f7e4de;
+    --grid:#eef2f4;
+    --shadow:0 1px 2px rgba(20,33,43,.04),0 4px 16px rgba(20,33,43,.05);
+  }
+  :root[data-theme="dark"]{
+    --ground:#0a1218; --surface:#121e26; --surface-2:#0f1a21;
+    --ink:#e9eff2; --ink-2:#bccad2; --muted:#8698a3; --faint:#5f7078;
+    --border:#22333d; --border-2:#1a2831;
+    --accent:#2bacb8; --accent-deep:#7fd0d7; --accent-wash:#0f2a2e;
+    --good:#43b985; --good-wash:#122a22;
+    --warn:#e0a53a; --warn-wash:#2c2413;
+    --crit:#e06a4c; --crit-wash:#2e1913;
+    --grid:#1a2831;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.28);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0}
+  .app{
+    --mono:ui-monospace,"Cascadia Mono","SF Mono",Menlo,"Roboto Mono",monospace;
+    --sans:-apple-system,"Segoe UI",system-ui,"Helvetica Neue",Arial,sans-serif;
+    background:var(--ground); color:var(--ink);
+    font-family:var(--sans); line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    padding:clamp(16px,3vw,40px);
+    min-height:100vh;
+  }
+  .wrap{max-width:1180px;margin:0 auto}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+  .eyebrow{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);font-weight:600}
+
+  /* ---- masthead ---- */
+  .masthead{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-end;justify-content:space-between;
+    padding-bottom:20px;border-bottom:1px solid var(--border);margin-bottom:22px}
+  .masthead h1{font-size:clamp(21px,2.6vw,29px);margin:.28em 0 .1em;font-weight:680;letter-spacing:-.015em;text-wrap:balance}
+  .masthead p{margin:0;color:var(--muted);font-size:13.5px;max-width:52ch}
+  .brandrow{display:flex;align-items:center;gap:10px}
+  .mark{width:26px;height:26px;flex:none}
+  .headmeta{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+  .badge{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;
+    padding:4px 10px;border-radius:100px;border:1px solid var(--border);color:var(--ink-2);background:var(--surface)}
+  .badge .dot{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+  .asof{font-size:12px;color:var(--faint)}
+  .asof b{color:var(--ink-2);font-weight:600}
+
+  /* ---- KPI strip ---- */
+  .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:18px}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:15px 15px 14px;
+    box-shadow:var(--shadow);display:flex;flex-direction:column;gap:9px;position:relative;overflow:hidden}
+  .kpi .lab{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600;line-height:1.25}
+  .kpi .val{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:clamp(19px,2.1vw,25px);font-weight:600;letter-spacing:-.02em;line-height:1}
+  .kpi .val small{font-size:.62em;color:var(--muted);font-weight:500;letter-spacing:0}
+  .kpi .sub{font-size:11.5px;color:var(--faint);margin-top:-2px}
+  .kpi.flag .val{color:var(--warn)} .kpi.risk .val{color:var(--crit)}
+  .tick{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent)}
+  .kpi.flag .tick{background:var(--warn)} .kpi.risk .tick{background:var(--crit)}
+
+  /* ---- panels ---- */
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);
+    padding:18px 20px 20px;min-width:0}
+  .phead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:16px}
+  .phead h2{font-size:14.5px;font-weight:660;margin:.2em 0 0;letter-spacing:-.01em}
+  .phead .hint{font-size:12px;color:var(--muted);text-align:right;line-height:1.35}
+  .grid2{display:grid;grid-template-columns:1.15fr 1fr;gap:18px;margin-bottom:18px}
+  .trendcard{margin-bottom:18px}
+
+  /* ---- trend chart ---- */
+  svg.trend{display:block;width:100%;height:auto;overflow:visible}
+  .t-bar{fill:var(--accent);opacity:.85}
+  .t-line{fill:none;stroke:var(--warn);stroke-width:2}
+  .t-dot{fill:var(--warn);stroke:var(--surface);stroke-width:1.2}
+  .t-legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;color:var(--muted)}
+  .t-legend span{display:inline-flex;align-items:center;gap:6px}
+  .lg{width:11px;height:11px;border-radius:3px} .lg.dot{border-radius:50%}
+
+  /* ---- bar chart ---- */
+  .bars{display:flex;flex-direction:column;gap:7px}
+  .bar{display:grid;grid-template-columns:52px 1fr 74px;align-items:center;gap:10px}
+  .bar .cid{font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+  .bar .track{height:16px;background:var(--surface-2);border-radius:4px;overflow:hidden;position:relative}
+  .bar .fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--accent-deep),var(--accent))}
+  .bar .fill.dil{background:linear-gradient(90deg,var(--warn),#e0a53a)}
+  .bar .amt{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:12px;text-align:right;color:var(--ink-2)}
+  .conc-note{margin-top:15px;padding-top:13px;border-top:1px dashed var(--border);font-size:12.5px;color:var(--muted)}
+  .conc-note b{color:var(--ink);font-family:var(--mono)}
+
+  /* ---- scatter ---- */
+  .scatter-wrap{position:relative}
+  svg.scatter{display:block;width:100%;height:auto;overflow:visible}
+  .axlab{font-size:10.5px;fill:var(--muted);font-family:var(--sans)}
+  .axtick{font-size:9.5px;fill:var(--faint);font-family:var(--mono)}
+  .gridline{stroke:var(--grid);stroke-width:1}
+  .qzone{fill:var(--crit-wash);opacity:.5}
+  .dot-pt{stroke:var(--surface);stroke-width:1.2;cursor:default}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+
+  /* ---- watchlist table ---- */
+  .tablecard{margin-bottom:18px}
+  .twrap{overflow-x:auto;margin:0 -20px -4px;padding:0 20px}
+  table{border-collapse:collapse;width:100%;font-size:13px;min-width:640px}
+  thead th{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;
+    text-align:right;padding:0 14px 9px;border-bottom:1px solid var(--border);white-space:nowrap}
+  thead th:first-child,thead th.l{text-align:left}
+  tbody td{padding:10px 14px;border-bottom:1px solid var(--border-2);text-align:right;white-space:nowrap}
+  tbody td.l{text-align:left}
+  tbody tr:last-child td{border-bottom:none}
+  td.cid{font-family:var(--mono);font-weight:600;position:relative;padding-left:18px}
+  td.cid .stripe{position:absolute;left:0;top:6px;bottom:6px;width:4px;border-radius:2px}
+  .mono-cell{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:100px;
+    font-family:var(--sans)}
+  .pill.crit{background:var(--crit-wash);color:var(--crit)}
+  .pill.warn{background:var(--warn-wash);color:var(--warn)}
+  .pill.low{background:var(--surface-2);color:var(--muted)}
+  .flagchip{font-size:10.5px;font-family:var(--mono);color:var(--warn);border:1px solid var(--warn);
+    border-radius:4px;padding:1px 5px;margin-left:6px}
+  .scoreb{display:inline-grid;grid-template-columns:34px 46px;align-items:center;gap:7px;justify-content:end}
+  .scoreb .mini{height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden;width:34px}
+  .scoreb .mini i{display:block;height:100%}
+
+  /* ---- fraud + method ---- */
+  .grid2b{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .fraud-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--border-2)}
+  .fraud-row:last-of-type{border-bottom:none}
+  .fraud-row .inv{font-family:var(--mono);font-weight:600;font-size:13px}
+  .fraud-row .meta{font-size:11.5px;color:var(--muted)}
+  .fraud-row .amt{font-family:var(--mono);font-size:14px;font-weight:600}
+  .empty-note{font-size:12.5px;color:var(--muted);margin-top:12px;padding-top:12px;border-top:1px dashed var(--border)}
+  .method h2{color:var(--ink)}
+  .method p{font-size:12.5px;color:var(--ink-2);margin:0 0 10px;line-height:1.6}
+  .method .infobox{background:var(--accent-wash);border:1px solid var(--accent);border-radius:9px;padding:11px 13px;font-size:12px;color:var(--ink-2)}
+  .method .infobox b{color:var(--accent-deep)}
+  code{font-family:var(--mono);font-size:.92em;background:var(--surface-2);padding:1px 5px;border-radius:4px;border:1px solid var(--border-2)}
+
+  footer{margin-top:24px;padding-top:16px;border-top:1px solid var(--border);
+    display:flex;flex-wrap:wrap;gap:8px 18px;justify-content:space-between;font-size:11.5px;color:var(--faint)}
+  footer .num{color:var(--muted)}
+
+  @media (max-width:860px){
+    .kpis{grid-template-columns:repeat(3,1fr)}
+    .grid2,.grid2b{grid-template-columns:1fr}
+  }
+  @media (max-width:520px){
+    .kpis{grid-template-columns:repeat(2,1fr)}
+  }
+</style>
+
+<div class="app">
+<div class="wrap">
+
+  <header class="masthead">
+    <div>
+      <div class="brandrow">
+        <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <rect x="1" y="1" width="30" height="30" rx="7" fill="var(--accent-wash)" stroke="var(--accent)" stroke-width="1.4"/>
+          <path d="M7 21.5 L12.5 14 L17 18 L24.5 9" stroke="var(--accent)" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="24.5" cy="9" r="2.3" fill="var(--accent)"/>
+        </svg>
+        <span class="eyebrow">SME Invoice Finance &middot; Risk &amp; Exposure</span>
+      </div>
+      <h1>Portfolio Risk Monitor</h1>
+      <p>Funding-in-use, dilution &amp; concentration risk, dormancy and fraud signals across the client ledger &mdash; with an early-warning watchlist.</p>
+    </div>
+    <div class="headmeta">
+      <span class="badge"><span class="dot"></span><span id="ds-badge">Sample run</span></span>
+      <span class="asof">As&nbsp;of <b id="asof-date"></b> &middot; <span class="num" id="asof-clients"></span> clients</span>
+    </div>
+  </header>
+
+  <section class="kpis" id="kpis" aria-label="Portfolio summary"></section>
+
+  <section class="panel trendcard">
+    <div class="phead">
+      <div><span class="eyebrow">Trend</span><h2>Weekly invoicing advanced &amp; dilution rate</h2></div>
+      <div class="hint">flow view &middot; origination per week<br>not outstanding balance</div>
+    </div>
+    <svg class="trend" id="trend" viewBox="0 0 1080 260" role="img" aria-label="Weekly advanced funding and dilution rate over time"></svg>
+    <div class="t-legend">
+      <span><i class="lg" style="background:var(--accent)"></i>Advanced / week (£, left axis)</span>
+      <span><i class="lg dot" style="background:var(--warn)"></i>Dilution rate (%, right axis)</span>
+    </div>
+  </section>
+
+  <div class="grid2">
+    <section class="panel">
+      <div class="phead">
+        <div><span class="eyebrow">Exposure</span><h2>Top clients by funding-in-use</h2></div>
+        <div class="hint">Cash advanced<br>@ 80% of net ledger</div>
+      </div>
+      <div class="bars" id="bars"></div>
+      <div class="conc-note" id="conc-note"></div>
+    </section>
+
+    <section class="panel">
+      <div class="phead">
+        <div><span class="eyebrow">Credit risk</span><h2>Dilution &times; concentration</h2></div>
+        <div class="hint">bubble = exposure<br>colour = risk score</div>
+      </div>
+      <div class="scatter-wrap"><svg class="scatter" id="scatter" viewBox="0 0 420 300" role="img" aria-label="Scatter of dilution rate versus debtor concentration"></svg></div>
+      <div class="legend">
+        <span><i class="lg" style="border-radius:50%;background:var(--crit)"></i>High risk (&ge;0.30)</span>
+        <span><i class="lg" style="border-radius:50%;background:var(--warn)"></i>Watch (0.10&ndash;0.30)</span>
+        <span><i class="lg" style="border-radius:50%;background:var(--accent)"></i>Low / none</span>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel tablecard">
+    <div class="phead">
+      <div><span class="eyebrow">Early warning</span><h2>Client watchlist &mdash; ranked by default-risk score</h2></div>
+      <div class="hint" id="wl-hint"></div>
+    </div>
+    <div class="twrap">
+      <table>
+        <thead><tr>
+          <th class="l">Client</th>
+          <th>Funding&nbsp;in&nbsp;use</th>
+          <th>Net&nbsp;ledger</th>
+          <th>Dilution</th>
+          <th>Concen.</th>
+          <th>Dormancy</th>
+          <th>Invoices</th>
+          <th>Risk&nbsp;score</th>
+        </tr></thead>
+        <tbody id="wl-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="grid2b">
+    <section class="panel">
+      <div class="phead">
+        <div><span class="eyebrow">Fraud &middot; anomaly</span><h2>Flagged invoices</h2></div>
+        <div class="hint" id="fraud-count"></div>
+      </div>
+      <div id="fraud-list"></div>
+      <div class="empty-note" id="fraud-note"></div>
+    </section>
+
+    <section class="panel method">
+      <div class="phead">
+        <div><span class="eyebrow">Methodology</span><h2>How to read this</h2></div>
+      </div>
+      <p><b>Exposure</b> is net ledger (gross invoicing &minus; credit notes) advanced at an 80% rate. <b>Dilution</b> is credit notes as a share of gross &mdash; the classic invoice-finance loss signal. <b>Concentration</b> is the largest single stock-line as a share of a client's ledger. <b>Dormancy</b> tiers: slowing &gt;30d, dormant &gt;90d.</p>
+      <div class="infobox"><b>Risk scorecard.</b> The score is a transparent weighted blend &mdash; dilution <b>50%</b>, concentration <b>25%</b>, dormancy <b>25%</b>, each normalised to 0&ndash;1. It's a documented rule (no trained label, no leakage), exactly how credit scorecards work. Join real <code>default</code> outcomes to fit a <em>predictive</em> model on the same features &mdash; with this as the baseline to beat.</div>
+    </section>
+  </div>
+
+  <footer>
+    <span>SME Invoice Finance Risk &amp; Exposure Monitor &middot; auto-generated by pipeline.py</span>
+    <span><span class="num" id="foot-rows"></span> transactions &middot; <span class="num" id="foot-clients"></span> clients</span>
+  </footer>
+
+</div>
+</div>
+
+<script>
+// Payload injected by pipeline.py at build time.
+const PAYLOAD = __DATA__;
+
+// thresholds (kept in one place so they're easy to tune)
+const RISK_CRIT = 0.30, RISK_WATCH = 0.10;
+const DORM_SLOW = 30, DORM_DEAD = 90;
+const CONC_HOT = 0.60, DIL_HOT = 0.10;
+const ADVANCE_RATE = 0.80;
+
+// clients: [id, gross, credits, ninv, conc, net, fund, dil, days, score]
+const cols = PAYLOAD.clients.map(r=>({id:r[0],gross:r[1],credits:r[2],ninv:r[3],conc:r[4],net:r[5],fund:r[6],dil:r[7],days:r[8],score:r[9]}));
+// trend: [period, gross, credits, advanced, dilution_rate]
+const TREND = PAYLOAD.trend.map(r=>({period:r[0],gross:r[1],credits:r[2],adv:r[3],dil:r[4]}));
+const FRAUD = PAYLOAD.fraud;
+const TX_ROWS = PAYLOAD.tx_rows;
+
+const C = {get:n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim()};
+const gbp = (v,dp=0)=>"£"+v.toLocaleString("en-GB",{minimumFractionDigits:dp,maximumFractionDigits:dp});
+const gbpK = v=> v>=1000 ? "£"+(v/1000).toFixed(v>=10000?0:1)+"k" : "£"+v.toFixed(0);
+const pct = (v,dp=1)=>(v*100).toFixed(dp)+"%";
+const sum = (a,f)=>a.reduce((s,x)=>s+f(x),0);
+const fmtDate = s=>{const d=new Date(s+"T00:00:00");return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});};
+const fmtDay = s=>{const d=new Date(s+"T00:00:00");return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short"});};
+
+// ---- header meta ----
+document.getElementById("ds-badge").textContent = PAYLOAD.dataset || "Sample run";
+document.getElementById("asof-date").textContent = fmtDate(PAYLOAD.asof);
+document.getElementById("asof-clients").textContent = cols.length;
+document.getElementById("foot-rows").textContent = TX_ROWS.toLocaleString("en-GB");
+document.getElementById("foot-clients").textContent = cols.length;
+
+// ---- aggregates ----
+const totalFund = sum(cols,c=>c.fund);
+const totalNet  = sum(cols,c=>c.net);
+const totalGross= sum(cols,c=>c.gross);
+const totalCred = sum(cols,c=>c.credits);
+const portDilution = totalGross>0 ? totalCred/totalGross : 0;
+const highRisk = cols.filter(c=>c.score>=RISK_WATCH).length;
+const concClients = cols.filter(c=>c.conc>=CONC_HOT).length;
+
+function tier(score){ return score>=RISK_CRIT?"crit": score>=RISK_WATCH?"warn":"low"; }
+function tierColor(t){ return t==="crit"?C.get("--crit"):t==="warn"?C.get("--warn"):C.get("--accent"); }
+
+// ---- KPIs ----
+const kpis = [
+  {lab:"Portfolio exposure", val:gbp(totalFund), sub:"total funding-in-use", cls:""},
+  {lab:"Net ledger value", val:gbp(totalNet), sub:"gross − credit notes", cls:""},
+  {lab:"Portfolio dilution", val:pct(portDilution), sub:gbp(totalCred)+" credit notes", cls:""},
+  {lab:"High-risk clients", val:highRisk+"<small> / "+cols.length+"</small>", sub:"risk score ≥ "+RISK_WATCH.toFixed(2), cls:"risk"},
+  {lab:"Concentration ≥60%", val:concClients+"<small> / "+cols.length+"</small>", sub:"single-line ledgers", cls:"flag"},
+  {lab:"Fraud flags", val:String(FRAUD.length), sub:"invoices flagged", cls:"flag"},
+];
+document.getElementById("kpis").innerHTML = kpis.map(k=>`
+  <div class="kpi ${k.cls}"><span class="tick"></span>
+    <span class="lab">${k.lab}</span>
+    <span class="val">${k.val}</span>
+    <span class="sub">${k.sub}</span>
+  </div>`).join("");
+
+// ---- trend: weekly advanced (bars) + dilution rate (line, right axis) ----
+(function(){
+  if(!TREND.length){document.getElementById("trend").innerHTML="";return;}
+  const W=1080,H=260, mL=54,mR=48,mT=14,mB=34;
+  const pw=W-mL-mR, ph=H-mT-mB;
+  const n=TREND.length;
+  const maxAdv=Math.max(...TREND.map(t=>t.adv),1);
+  const maxDil=Math.max(Math.max(...TREND.map(t=>t.dil)),0.05);
+  const bw=Math.max(pw/n*0.62,2);
+  const cx=i=>mL + (i+0.5)*pw/n;
+  const yA=v=>mT+ph - v/maxAdv*ph;
+  const yD=v=>mT+ph - v/maxDil*ph;
+  let s="";
+  // horizontal gridlines (left axis, 4 steps)
+  for(let g=0;g<=4;g++){ const v=maxAdv*g/4, y=yA(v);
+    s+=`<line class="gridline" x1="${mL}" y1="${y.toFixed(1)}" x2="${mL+pw}" y2="${y.toFixed(1)}"/>`;
+    s+=`<text class="axtick" x="${mL-8}" y="${(y+3).toFixed(1)}" text-anchor="end">${gbpK(v)}</text>`;
+  }
+  // right axis ticks (dilution)
+  for(let g=0;g<=4;g++){ const v=maxDil*g/4, y=yD(v);
+    s+=`<text class="axtick" x="${mL+pw+8}" y="${(y+3).toFixed(1)}" text-anchor="start" fill="var(--warn)">${(v*100).toFixed(0)}%</text>`;
+  }
+  // bars
+  TREND.forEach((t,i)=>{ const h=Math.max(mT+ph-yA(t.adv),0);
+    s+=`<rect class="t-bar" x="${(cx(i)-bw/2).toFixed(1)}" y="${yA(t.adv).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5"><title>${fmtDay(t.period)} · advanced ${gbp(t.adv)} · dilution ${pct(t.dil)}</title></rect>`;
+  });
+  // dilution line
+  const pts=TREND.map((t,i)=>`${cx(i).toFixed(1)},${yD(t.dil).toFixed(1)}`).join(" ");
+  s+=`<polyline class="t-line" points="${pts}"/>`;
+  TREND.forEach((t,i)=>{ s+=`<circle class="t-dot" cx="${cx(i).toFixed(1)}" cy="${yD(t.dil).toFixed(1)}" r="2.6"><title>${fmtDay(t.period)} · dilution ${pct(t.dil)}</title></circle>`; });
+  // x labels: first, ~middle, last (and a couple between if room)
+  const step=Math.max(1,Math.round(n/6));
+  TREND.forEach((t,i)=>{ if(i%step===0 || i===n-1){
+    s+=`<text class="axtick" x="${cx(i).toFixed(1)}" y="${mT+ph+18}" text-anchor="middle">${fmtDay(t.period)}</text>`;
+  }});
+  document.getElementById("trend").innerHTML=s;
+})();
+
+// ---- bars: top 12 by funding ----
+const top = [...cols].sort((a,b)=>b.fund-a.fund).slice(0,12);
+const maxFund = Math.max(...cols.map(c=>c.fund),1);
+document.getElementById("bars").innerHTML = top.map(c=>{
+  const w = (c.fund/top[0].fund*100).toFixed(1);
+  return `<div class="bar">
+    <span class="cid">${c.id}</span>
+    <span class="track"><span class="fill ${c.dil>DIL_HOT?'dil':''}" style="width:${w}%"></span></span>
+    <span class="amt">${gbp(c.fund)}</span>
+  </div>`;
+}).join("");
+const top10 = [...cols].sort((a,b)=>b.fund-a.fund).slice(0,10);
+const top10share = totalFund>0 ? sum(top10,c=>c.fund)/totalFund : 0;
+document.getElementById("conc-note").innerHTML =
+  `Top 10 clients hold <b>${pct(top10share,0)}</b> of portfolio exposure (<b>${gbp(sum(top10,c=>c.fund))}</b> of ${gbp(totalFund)}). Amber bars carry dilution &gt;${(DIL_HOT*100).toFixed(0)}%.`;
+
+// ---- scatter: dilution (x) vs concentration (y) ----
+(function(){
+  const W=420,H=300, mL=42,mR=14,mT=12,mB=38;
+  const pw=W-mL-mR, ph=H-mT-mB;
+  const xmax=0.40, ymax=1.0;
+  const X=v=>mL+Math.min(v,xmax)/xmax*pw;
+  const Y=v=>mT+ph-Math.min(v,ymax)/ymax*ph;
+  const R=f=>Math.sqrt(f/maxFund)*13+3;
+  let s="";
+  s+=`<rect class="qzone" x="${mL}" y="${Y(ymax)}" width="${pw}" height="${(Y(CONC_HOT)-mT).toFixed(1)}"/>`;
+  [0,0.1,0.2,0.3,0.4].forEach(t=>{ s+=`<line class="gridline" x1="${X(t)}" y1="${mT}" x2="${X(t)}" y2="${mT+ph}"/>`;
+    s+=`<text class="axtick" x="${X(t)}" y="${mT+ph+14}" text-anchor="middle">${(t*100).toFixed(0)}%</text>`; });
+  [0,0.25,0.5,0.75,1.0].forEach(t=>{ s+=`<line class="gridline" x1="${mL}" y1="${Y(t)}" x2="${mL+pw}" y2="${Y(t)}"/>`;
+    s+=`<text class="axtick" x="${mL-7}" y="${Y(t)+3}" text-anchor="end">${(t*100).toFixed(0)}%</text>`; });
+  s+=`<text class="axlab" x="${mL+pw/2}" y="${H-4}" text-anchor="middle">Dilution rate →</text>`;
+  s+=`<text class="axlab" transform="translate(11,${mT+ph/2}) rotate(-90)" text-anchor="middle">Debtor concentration →</text>`;
+  const ordered=[...cols].sort((a,b)=>a.score-b.score);
+  ordered.forEach(c=>{
+    const col=tierColor(tier(c.score));
+    const op = c.score>=RISK_WATCH?0.95: (c.dil>0||c.conc>=CONC_HOT)?0.6:0.4;
+    s+=`<circle class="dot-pt" cx="${X(c.dil).toFixed(1)}" cy="${Y(c.conc).toFixed(1)}" r="${R(c.fund).toFixed(1)}" fill="${col}" opacity="${op}"><title>Client ${c.id} · dilution ${pct(c.dil)} · concentration ${pct(c.conc,0)} · risk ${c.score.toFixed(3)} · ${gbp(c.fund)}</title></circle>`;
+  });
+  const hot=[...cols].sort((a,b)=>b.score-a.score)[0];
+  if(hot && hot.score>=RISK_WATCH)
+    s+=`<text x="${(X(hot.dil)+10).toFixed(1)}" y="${(Y(hot.conc)+3).toFixed(1)}" font-size="10.5" font-family="ui-monospace,monospace" fill="${C.get('--crit')}" font-weight="600">${hot.id}</text>`;
+  document.getElementById("scatter").innerHTML=s;
+})();
+
+// ---- watchlist ----
+const wl = [...cols].sort((a,b)=>b.score-a.score).slice(0,12);
+document.getElementById("wl-hint").innerHTML = `showing top 12 of ${cols.length} &middot; sorted by score`;
+document.getElementById("wl-body").innerHTML = wl.map(c=>{
+  const col=tierColor(tier(c.score));
+  const pill = c.score>=RISK_CRIT?`<span class="pill crit">Critical</span>`
+             : c.score>=RISK_WATCH?`<span class="pill warn">Watch</span>`
+             : `<span class="pill low">Low</span>`;
+  const dorm = c.days>DORM_SLOW?`<span class="flagchip">${c.days}d</span>`:`<span class="mono-cell">${c.days}d</span>`;
+  const barw=Math.max(c.score*100,3).toFixed(0);
+  return `<tr>
+    <td class="l cid"><span class="stripe" style="background:${col}"></span>${c.id}</td>
+    <td class="mono-cell">${gbp(c.fund)}</td>
+    <td class="mono-cell">${gbp(c.net)}</td>
+    <td class="mono-cell" ${c.dil>DIL_HOT?`style="color:var(--warn);font-weight:600"`:``}>${c.dil>0?pct(c.dil):"—"}</td>
+    <td class="mono-cell" ${c.conc>=CONC_HOT?`style="color:var(--crit);font-weight:600"`:``}>${pct(c.conc,0)}</td>
+    <td>${dorm}</td>
+    <td class="mono-cell">${c.ninv}</td>
+    <td><span class="scoreb"><span class="mini"><i style="width:${barw}%;background:${col}"></i></span><span class="mono-cell" style="color:${col};font-weight:600">${c.score.toFixed(3)}</span></span> ${pill}</td>
+  </tr>`;
+}).join("");
+
+// ---- fraud ----
+document.getElementById("fraud-count").textContent = FRAUD.length+" flagged";
+if(FRAUD.length){
+  document.getElementById("fraud-list").innerHTML = FRAUD.map(f=>`
+    <div class="fraud-row">
+      <div>
+        <div class="inv">Invoice ${f.inv} ${f.round?'<span class="flagchip">round-number</span>':''}${f.dup?'<span class="flagchip">duplicate</span>':''}</div>
+        <div class="meta">Client ${f.client} &middot; ${f.lines} line${f.lines===1?'':'s'} &middot; ${fmtDate(f.date)}</div>
+      </div>
+      <div class="amt">${gbp(f.value,2)}</div>
+    </div>`).join("");
+} else {
+  document.getElementById("fraud-list").innerHTML = `<div class="meta" style="color:var(--good);font-size:13px">No invoices flagged in this run.</div>`;
+}
+const nDup=FRAUD.filter(f=>f.dup).length, nRound=FRAUD.filter(f=>f.round).length;
+document.getElementById("fraud-note").innerHTML =
+  `Rules: exact round-number totals (&pound;n&times;100) and duplicate <span class="num">value&times;client&times;date</span> signatures. This run: <b class="num">${nRound}</b> round-number, <b class="num">${nDup}</b> duplicate.`;
+</script>
