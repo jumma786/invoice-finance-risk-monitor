@@ -460,17 +460,21 @@ document.getElementById("wl-body").innerHTML = wl.map(c=>{
   </tr>`;
 }).join("");
 
-// ---- fraud ----
-document.getElementById("fraud-count").textContent = FRAUD.length+" flagged";
+// ---- fraud (top by value; capped so the panel stays scannable at scale) ----
+const FRAUD_SHOW = 12;
+document.getElementById("fraud-count").textContent = FRAUD.length.toLocaleString("en-GB")+" flagged";
 if(FRAUD.length){
-  document.getElementById("fraud-list").innerHTML = FRAUD.map(f=>`
+  const shown = FRAUD.slice(0, FRAUD_SHOW);
+  const more = FRAUD.length - shown.length;
+  document.getElementById("fraud-list").innerHTML = shown.map(f=>`
     <div class="fraud-row">
       <div>
         <div class="inv">Invoice ${f.inv} ${f.round?'<span class="flagchip">round-number</span>':''}${f.dup?'<span class="flagchip">duplicate</span>':''}</div>
         <div class="meta">Client ${f.client} &middot; ${f.lines} line${f.lines===1?'':'s'} &middot; ${fmtDate(f.date)}</div>
       </div>
       <div class="amt">${gbp(f.value,2)}</div>
-    </div>`).join("");
+    </div>`).join("")
+    + (more>0 ? `<div class="fraud-row" style="color:var(--muted);font-size:12.5px">+ ${more.toLocaleString("en-GB")} more flagged invoices &middot; see <span class="num">fraud_flags.csv</span></div>` : "");
 } else {
   document.getElementById("fraud-list").innerHTML = `<div class="meta" style="color:var(--good);font-size:13px">No invoices flagged in this run.</div>`;
 }
