@@ -4,6 +4,8 @@ Turns real transaction data into invoice-finance risk metrics, fraud flags, and 
 early-warning risk scorecard — mirroring the core work of a data analyst at an
 invoice finance lender.
 
+📖 **Write-up:** [How I built this — the full story](docs/medium-article.md) (portfolio article)
+
 ## Results
 
 Running the pipeline on the full UCI Online Retail II ledger (**824,364
