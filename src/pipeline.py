@@ -164,8 +164,21 @@ MODEL_FEATURES = ["gross_invoicing", "credit_notes", "dilution_rate",
                   "avg_invoice_value"]
 
 
+def _model_features(frame, ref_date, min_invoices=2):
+    """Per-client model features from a transaction frame, recency/tenure keyed
+    off ref_date. Same definition for the training window and for live scoring,
+    so the model sees consistent inputs when deployed."""
+    feat = client_risk_metrics(frame).set_index("Customer ID")
+    first = frame.groupby("Customer ID")["InvoiceDate"].min()
+    feat["tenure_days"] = (ref_date - first).dt.days
+    feat["avg_invoice_value"] = feat["gross_invoicing"] / feat["n_invoices"].clip(lower=1)
+    # only clients with a real trading relationship
+    return feat[(feat["gross_invoicing"] > 0) & (feat["n_invoices"] >= min_invoices)]
+
+
 def train_default_model(df, outcome_days=182, min_invoices=2):
-    """Out-of-time run-off (default-proxy) model. Returns (report, scored_pop)."""
+    """Out-of-time run-off model, then deployed forward onto current clients.
+    Returns (report, historical_pop, current_scored)."""
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.model_selection import train_test_split
     from sklearn.metrics import roc_auc_score
@@ -175,44 +188,51 @@ def train_default_model(df, outcome_days=182, min_invoices=2):
     pre = df[df["InvoiceDate"] < cutoff]
     post = df[df["InvoiceDate"] >= cutoff]
 
-    # features as of the cutoff (client_risk_metrics keys recency off pre's max)
-    feat = client_risk_metrics(pre).set_index("Customer ID")
-    first = pre.groupby("Customer ID")["InvoiceDate"].min()
-    feat["tenure_days"] = (cutoff - first).dt.days
-    feat["avg_invoice_value"] = feat["gross_invoicing"] / feat["n_invoices"].clip(lower=1)
-
-    # only clients with a real trading relationship pre-cutoff
-    feat = feat[(feat["gross_invoicing"] > 0) & (feat["n_invoices"] >= min_invoices)]
-
-    # forward label: no gross invoicing in the outcome window => run-off
+    # ---- training frame: pre-cutoff features, post-cutoff run-off label ----
+    train = _model_features(pre, cutoff, min_invoices)
     post_gross = post[~post.IsCreditNote].groupby("Customer ID")["LineValue"].sum()
-    feat["post_invoicing"] = feat.index.to_series().map(post_gross).fillna(0.0)
-    feat["ran_off"] = (feat["post_invoicing"] <= 0).astype(int)
+    train["ran_off"] = (train.index.to_series().map(post_gross).fillna(0.0) <= 0).astype(int)
 
-    X = feat[MODEL_FEATURES].fillna(0.0)
-    y = feat["ran_off"]
+    X, y = train[MODEL_FEATURES].fillna(0.0), train["ran_off"]
     Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.25,
                                           random_state=42, stratify=y)
-    model = RandomForestClassifier(n_estimators=300, random_state=42,
-                                   class_weight="balanced_subsample").fit(Xtr, ytr)
-    model_auc = roc_auc_score(yte, model.predict_proba(Xte)[:, 1])
 
-    # scorecard baseline on the SAME forward label / hold-out
-    base = score_clients(feat.reset_index()).set_index("Customer ID")["risk_score"]
+    def rf():
+        return RandomForestClassifier(n_estimators=300, random_state=42,
+                                      class_weight="balanced_subsample")
+
+    # eval on a held-out split for an honest AUC ...
+    eval_model = rf().fit(Xtr, ytr)
+    model_auc = roc_auc_score(yte, eval_model.predict_proba(Xte)[:, 1])
+    base = score_clients(train.reset_index()).set_index("Customer ID")["risk_score"]
     base_auc = roc_auc_score(yte, base.loc[yte.index])
 
-    feat["runoff_prob"] = model.predict_proba(X)[:, 1]
-    feat["in_test"] = feat.index.isin(Xte.index)
-    importances = sorted(zip(MODEL_FEATURES, model.feature_importances_),
+    # ... then refit on ALL historical labels for deployment
+    deploy = rf().fit(X, y)
+    train["runoff_prob"] = deploy.predict_proba(X)[:, 1]
+    train["in_test"] = train.index.isin(Xte.index)
+    importances = sorted(zip(MODEL_FEATURES, deploy.feature_importances_),
                          key=lambda t: -t[1])
+
+    # ---- DEPLOY FORWARD: score current clients as of the latest date ----
+    current = _model_features(df, asof, min_invoices)
+    current["runoff_prob"] = deploy.predict_proba(current[MODEL_FEATURES].fillna(0.0))[:, 1]
+    current["exp_exposure"] = (current["runoff_prob"] * current["funding_in_use"]).round(2)
+    current = current.sort_values("exp_exposure", ascending=False)
+
+    high = current[current["runoff_prob"] >= 0.5]
     report = {
-        "cutoff": cutoff, "outcome_days": outcome_days,
-        "n_clients": int(len(feat)), "n_runoff": int(y.sum()),
+        "cutoff": cutoff, "asof": asof, "outcome_days": outcome_days,
+        "n_clients": int(len(train)), "n_runoff": int(y.sum()),
         "runoff_rate": float(y.mean()), "test_n": int(len(yte)),
         "baseline_auc": float(base_auc), "model_auc": float(model_auc),
         "importances": [(f, float(i)) for f, i in importances],
+        # forward deployment summary
+        "fwd_n": int(len(current)),
+        "fwd_high": int(len(high)),
+        "fwd_exp_exposure": float(current["exp_exposure"].clip(lower=0).sum()),
     }
-    return report, feat.reset_index()
+    return report, train.reset_index(), current.reset_index()
 
 
 # ---------------------------------------------------------------------------
@@ -249,11 +269,17 @@ def build_dashboard(scored, fraud, trend, n_rows, asof, dataset_label,
     def num(v, dp):
         return round(float(v), dp) if pd.notna(v) else 0.0
 
+    has_rp = "runoff_prob" in scored.columns
+
+    def rp(r):
+        return round(float(r["runoff_prob"]), 4) if has_rp and pd.notna(r["runoff_prob"]) else None
+
     clients = [[
         int(r["Customer ID"]), num(r["gross_invoicing"], 2), num(r["credit_notes"], 2),
         int(r["n_invoices"]), num(r["top_line_concentration"], 6), num(r["net_ledger"], 2),
         num(r["funding_in_use"], 2), num(r["dilution_rate"], 6),
         int(r["days_since_activity"]), num(r["risk_score"], 4), num(r["priority"], 2),
+        rp(r),
     ] for _, r in scored.iterrows()]
 
     fraud_recs = [{
@@ -277,6 +303,10 @@ def build_dashboard(scored, fraud, trend, n_rows, asof, dataset_label,
             "baseline_auc": round(model_report["baseline_auc"], 3),
             "model_auc": round(model_report["model_auc"], 3),
             "importances": [[f, round(i, 4)] for f, i in model_report["importances"]],
+            "asof": model_report["asof"].strftime("%Y-%m-%d"),
+            "fwd_n": model_report["fwd_n"],
+            "fwd_high": model_report["fwd_high"],
+            "fwd_exp_exposure": round(model_report["fwd_exp_exposure"], 2),
         }
 
     payload = {
@@ -311,33 +341,45 @@ if __name__ == "__main__":
     print(fraud.head(5).to_string(index=False), "\n")
 
     scored = score_clients(metrics)
-    scored.to_csv(OUT / "client_watchlist.csv", index=False)
     print("=== Early-warning risk scorecard ===")
     print("Weights: " + ", ".join(f"{k} {v:.0%}" for k, v in SCORE_WEIGHTS.items()))
-    print("\nTop 10 by priority (risk-weighted exposure):")
-    print(scored.sort_values("priority", ascending=False)
-          [["Customer ID", "funding_in_use", "dilution_rate",
-            "top_line_concentration", "days_since_activity",
-            "risk_score", "priority"]]
-          .head(10).to_string(index=False))
 
     trend = ledger_trend(df)
     trend.to_csv(OUT / "ledger_trend.csv", index=False)
     print(f"\n=== Ledger trend: {len(trend)} weekly periods ===")
 
     try:
-        report, model_pop = train_default_model(df)
-        model_pop.to_csv(OUT / "default_model.csv", index=False)
-        print("\n=== Predictive early-warning model (out-of-time run-off) ===")
+        report, hist_pop, current = train_default_model(df)
+        hist_pop.to_csv(OUT / "default_model.csv", index=False)
+        # deploy forward: attach each current client's predicted run-off prob
+        scored = scored.merge(current[["Customer ID", "runoff_prob"]],
+                              on="Customer ID", how="left")
+        fwd = current[["Customer ID", "funding_in_use", "runoff_prob", "exp_exposure",
+                       "dilution_rate", "top_line_concentration", "days_since_activity"]]
+        fwd.to_csv(OUT / "forward_watchlist.csv", index=False)
+        print("\n=== Predictive model (out-of-time run-off) ===")
         print(f"Cutoff {report['cutoff'].date()} | {report['n_clients']} clients | "
-              f"run-off rate {report['runoff_rate']:.1%} ({report['n_runoff']} of {report['n_clients']})")
+              f"run-off rate {report['runoff_rate']:.1%}")
         print(f"Scorecard baseline AUC: {report['baseline_auc']:.3f}   "
-              f"Trained model AUC: {report['model_auc']:.3f}   "
-              f"(hold-out n={report['test_n']})")
+              f"Trained model AUC: {report['model_auc']:.3f}   (hold-out n={report['test_n']})")
         print("Top features: " + ", ".join(f"{f} {i:.0%}" for f, i in report["importances"][:4]))
+        print(f"\n=== Deployed forward as of {report['asof'].date()} ===")
+        print(f"{report['fwd_n']} current clients scored | {report['fwd_high']} at P(run-off) >= 0.5 | "
+              f"£{report['fwd_exp_exposure']:,.0f} expected exposure at risk")
+        print("\nTop 10 forward watchlist (expected exposure at risk):")
+        print(fwd.sort_values("exp_exposure", ascending=False)
+              [["Customer ID", "funding_in_use", "runoff_prob", "exp_exposure"]]
+              .head(10).to_string(index=False))
     except Exception as e:
         report = None
         print(f"\n[warn] predictive model skipped: {e}")
+
+    scored.to_csv(OUT / "client_watchlist.csv", index=False)
+    print("\nTop 10 by priority (risk-weighted exposure):")
+    print(scored.sort_values("priority", ascending=False)
+          [["Customer ID", "funding_in_use", "dilution_rate",
+            "days_since_activity", "risk_score", "priority"]]
+          .head(10).to_string(index=False))
 
     build_dashboard(scored, fraud, trend, len(df), df["InvoiceDate"].max(),
                     dataset_label, model_report=report)

@@ -21,6 +21,10 @@ dormant £0-balance accounts.
 The predictive run-off model reaches **0.78 hold-out AUC**, beating the
 transparent scorecard baseline (**0.73**) — realistic, not suspiciously perfect,
 which is the point: the label is strictly forward-looking, so there's no leakage.
+Deployed forward, it scores **4,477** current clients and flags **£1.9M** of
+expected exposure at risk (probability × funding) over the next ~6 months —
+a ranking that genuinely differs from the scorecard, since it predicts who will
+*run off next* rather than who merely looks risky today.
 
 ## Business context
 An invoice finance lender advances cash against clients' unpaid invoices. The
@@ -47,7 +51,10 @@ Framing is adapted (customers->clients, returns->dilution); the numbers are real
    classifier: features from client behaviour **before** a cutoff date, label =
    client goes into run-off (no invoicing) in the window **after** it. A random
    hold-out gives an honest AUC, and the scorecard is scored on the same forward
-   label as the baseline to beat.
+   label as the baseline to beat. The model is then **refit on all history and
+   deployed forward**: it scores every *current* client as of the latest date to
+   predict run-off in their next ~6 months — the `P(run-off)` column on the
+   watchlist and `forward_watchlist.csv`, ranked by expected exposure at risk.
 
 > Why not Lending Club? Its loan `default` outcomes share no join key with these
 > retail clients, so attaching them would be inventing labels. Instead the model
@@ -70,15 +77,17 @@ self-contained `outputs/dashboard.html` — open it in any browser, no server ne
   `priority` column (risk score × funding-in-use) so the watchlist ranks by money
   actually at risk; per-signal component columns included for auditability
 - `outputs/ledger_trend.csv` — weekly invoicing advanced & dilution rate (flow view)
-- `outputs/default_model.csv` — per-client run-off probability from the predictive
-  model, with the forward label and hold-out flag
+- `outputs/default_model.csv` — historical training population with the forward
+  run-off label, predicted probability, and hold-out flag
+- `outputs/forward_watchlist.csv` — current clients scored by the deployed model:
+  predicted run-off probability and expected exposure at risk (prob × funding)
 - `outputs/dashboard.html` — interactive risk console over all of the above (KPIs,
   trend, exposure, dilution×concentration, watchlist, model validation, fraud),
   generated from `src/dashboard_template.html` with the run's own data embedded
 
 ## Next steps
-- Deploy the run-off model forward: train on history, then score *current*
-  clients to predict run-off in the next 6 months for a live watchlist
+- Calibrate the run-off probabilities (Platt / isotonic) so P(run-off) reads as
+  a true probability, and add temporal cross-validation across multiple cutoffs
 - Enrich clients with real company data via the Companies House API
 - Extend the trend from a flow view to true outstanding-balance ageing once
   settlement/payment dates are available
