@@ -573,7 +573,10 @@ document.getElementById("fraud-note").innerHTML =
       <div class="fwd-stat"><span class="fv">${m.fwd_high.toLocaleString("en-GB")}</span><span class="fl">at P(run-off) &ge; 50%</span></div>
       <div class="fwd-stat"><span class="fv">${gbp(m.fwd_exp_exposure)}</span><span class="fl">expected exposure at risk</span></div>`;
   }
+  const calNote = (m.brier_cal!=null && m.brier_raw!=null)
+    ? ` Probabilities are <b>${m.calibration||"isotonic"}-calibrated</b> so <span class="num">P(run-off)</span> reads as a true probability &mdash; Brier score <b>${m.brier_raw.toFixed(3)}&nbsp;&rarr;&nbsp;${m.brier_cal.toFixed(3)}</b> (lower is better).`
+    : "";
   document.getElementById("model-caption").innerHTML =
-    `Trained out-of-time (features <b>before ${fmtDate(m.cutoff)}</b>, run-off label in the <b>~${months} months after</b>; <b>${(m.runoff_rate*100).toFixed(0)}%</b> run-off, 25% hold-out, no leakage), then <b>deployed forward</b> onto the ${m.fwd_n.toLocaleString("en-GB")} clients active as of <b>${fmtDate(m.asof)}</b> to predict run-off in their next ~${months} months &mdash; the <span class="num">P(run-off)</span> column in the watchlist above. The scorecard stays as the explainable baseline it beats.`;
+    `Trained out-of-time (features <b>before ${fmtDate(m.cutoff)}</b>, run-off label in the <b>~${months} months after</b>; <b>${(m.runoff_rate*100).toFixed(0)}%</b> run-off, 25% hold-out, no leakage), then <b>deployed forward</b> onto the ${m.fwd_n.toLocaleString("en-GB")} clients active as of <b>${fmtDate(m.asof)}</b> to predict run-off in their next ~${months} months &mdash; the <span class="num">P(run-off)</span> column in the watchlist above.${calNote} The scorecard stays as the explainable baseline it beats.`;
 })();
 </script>

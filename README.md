@@ -23,10 +23,11 @@ dormant £0-balance accounts.
 The predictive run-off model reaches **0.78 hold-out AUC**, beating the
 transparent scorecard baseline (**0.73**) — realistic, not suspiciously perfect,
 which is the point: the label is strictly forward-looking, so there's no leakage.
-Deployed forward, it scores **4,477** current clients and flags **£1.9M** of
-expected exposure at risk (probability × funding) over the next ~6 months —
-a ranking that genuinely differs from the scorecard, since it predicts who will
-*run off next* rather than who merely looks risky today.
+Its probabilities are **calibrated** (isotonic), so `P(run-off)` reads as a true
+probability. Deployed forward, it scores **4,477** current clients and flags
+**~£2.1M** of expected exposure at risk (calibrated probability × funding) over
+the next ~6 months — a ranking that genuinely differs from the scorecard, since
+it predicts who will *run off next* rather than who merely looks risky today.
 
 ## Business context
 An invoice finance lender advances cash against clients' unpaid invoices. The
@@ -57,6 +58,10 @@ Framing is adapted (customers->clients, returns->dilution); the numbers are real
    deployed forward**: it scores every *current* client as of the latest date to
    predict run-off in their next ~6 months — the `P(run-off)` column on the
    watchlist and `forward_watchlist.csv`, ranked by expected exposure at risk.
+   The probabilities are **calibrated** (isotonic by default, Platt optional) so
+   `P(run-off)` reads as a true probability rather than just a ranking; the run
+   reports the Brier score before vs after to show the improvement. Calibration
+   is monotonic, so it leaves the AUC (ranking) intact.
 
 > Why not Lending Club? Its loan `default` outcomes share no join key with these
 > retail clients, so attaching them would be inventing labels. Instead the model
@@ -71,6 +76,15 @@ python src/pipeline.py
 Drop `online_retail_II.xlsx` into `data/` to run on the full ~1M-row dataset;
 otherwise a bundled sample runs automatically. Each run also builds a
 self-contained `outputs/dashboard.html` — open it in any browser, no server needed.
+
+## Tests
+Unit tests cover the metric maths, fraud rules, scorecard, ledger trend, and the
+calibrated run-off model (on small synthetic ledgers, so the expected numbers are
+hand-checkable — no large dataset needed):
+```
+pip install pytest
+pytest -q
+```
 
 ## Outputs
 - `outputs/client_risk_metrics.csv` — per-client exposure & risk metrics
@@ -88,8 +102,8 @@ self-contained `outputs/dashboard.html` — open it in any browser, no server ne
   generated from `src/dashboard_template.html` with the run's own data embedded
 
 ## Next steps
-- Calibrate the run-off probabilities (Platt / isotonic) so P(run-off) reads as
-  a true probability, and add temporal cross-validation across multiple cutoffs
+- Add temporal cross-validation across multiple cutoffs (probability calibration
+  via Platt / isotonic is now in — see the model section above)
 - Enrich clients with real company data via the Companies House API
 - Extend the trend from a flow view to true outstanding-balance ageing once
   settlement/payment dates are available

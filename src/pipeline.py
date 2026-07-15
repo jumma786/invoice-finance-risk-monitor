@@ -182,12 +182,20 @@ def _model_features(frame, ref_date, min_invoices=2):
     return feat[(feat["gross_invoicing"] > 0) & (feat["n_invoices"] >= min_invoices)]
 
 
-def train_default_model(df, outcome_days=182, min_invoices=2):
+def train_default_model(df, outcome_days=182, min_invoices=2, calibration="isotonic"):
     """Out-of-time run-off model, then deployed forward onto current clients.
+
+    Probabilities are *calibrated* (Platt/sigmoid or isotonic) so the P(run-off)
+    column reads as a true probability, not merely a ranking: of the clients
+    scored ~0.7, roughly 70% should actually run off. Calibration is a monotonic
+    transform, so it leaves the ranking (AUC) intact while correcting the
+    probability scale - reported as the Brier score before vs after.
+
     Returns (report, historical_pop, current_scored)."""
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.model_selection import train_test_split
-    from sklearn.metrics import roc_auc_score
+    from sklearn.calibration import CalibratedClassifierCV
+    from sklearn.metrics import roc_auc_score, brier_score_loss
 
     asof = df["InvoiceDate"].max()
     cutoff = asof - pd.Timedelta(days=outcome_days)
@@ -207,17 +215,30 @@ def train_default_model(df, outcome_days=182, min_invoices=2):
         return RandomForestClassifier(n_estimators=300, random_state=42,
                                       class_weight="balanced_subsample")
 
-    # eval on a held-out split for an honest AUC ...
-    eval_model = rf().fit(Xtr, ytr)
-    model_auc = roc_auc_score(yte, eval_model.predict_proba(Xte)[:, 1])
+    def calibrated(Xd, yd):
+        # calibrate the forest with internal cross-validation; fold count is
+        # clamped to the rarer class so this stays robust on small samples too.
+        n_folds = max(2, min(5, int(pd.Series(yd).value_counts().min())))
+        return CalibratedClassifierCV(rf(), method=calibration, cv=n_folds).fit(Xd, yd)
+
+    # ---- honest hold-out: ranking (AUC) plus calibration quality (Brier) ----
+    raw_eval = rf().fit(Xtr, ytr)
+    raw_p = raw_eval.predict_proba(Xte)[:, 1]
+    cal_eval = calibrated(Xtr, ytr)
+    cal_p = cal_eval.predict_proba(Xte)[:, 1]
+    model_auc = roc_auc_score(yte, cal_p)          # monotonic calibration keeps ranking
+    brier_raw = brier_score_loss(yte, raw_p)       # lower is better; before calibration
+    brier_cal = brier_score_loss(yte, cal_p)       # after calibration
     base = score_clients(train.reset_index()).set_index("Customer ID")["risk_score"]
     base_auc = roc_auc_score(yte, base.loc[yte.index])
 
-    # ... then refit on ALL historical labels for deployment
-    deploy = rf().fit(X, y)
+    # ... then refit the calibrated model on ALL historical labels for deployment
+    deploy = calibrated(X, y)
     train["runoff_prob"] = deploy.predict_proba(X)[:, 1]
     train["in_test"] = train.index.isin(Xte.index)
-    importances = sorted(zip(MODEL_FEATURES, deploy.feature_importances_),
+    # importances come from a plain forest on the same full data (the calibration
+    # wrapper doesn't expose them directly, and the underlying model is identical)
+    importances = sorted(zip(MODEL_FEATURES, rf().fit(X, y).feature_importances_),
                          key=lambda t: -t[1])
 
     # ---- DEPLOY FORWARD: score current clients as of the latest date ----
@@ -232,6 +253,8 @@ def train_default_model(df, outcome_days=182, min_invoices=2):
         "n_clients": int(len(train)), "n_runoff": int(y.sum()),
         "runoff_rate": float(y.mean()), "test_n": int(len(yte)),
         "baseline_auc": float(base_auc), "model_auc": float(model_auc),
+        "calibration": calibration,
+        "brier_raw": float(brier_raw), "brier_cal": float(brier_cal),
         "importances": [(f, float(i)) for f, i in importances],
         # forward deployment summary
         "fwd_n": int(len(current)),
@@ -308,6 +331,9 @@ def build_dashboard(scored, fraud, trend, n_rows, asof, dataset_label,
             "runoff_rate": round(model_report["runoff_rate"], 4),
             "baseline_auc": round(model_report["baseline_auc"], 3),
             "model_auc": round(model_report["model_auc"], 3),
+            "calibration": model_report["calibration"],
+            "brier_raw": round(model_report["brier_raw"], 4),
+            "brier_cal": round(model_report["brier_cal"], 4),
             "importances": [[f, round(i, 4)] for f, i in model_report["importances"]],
             "asof": model_report["asof"].strftime("%Y-%m-%d"),
             "fwd_n": model_report["fwd_n"],
@@ -368,6 +394,8 @@ if __name__ == "__main__":
               f"run-off rate {report['runoff_rate']:.1%}")
         print(f"Scorecard baseline AUC: {report['baseline_auc']:.3f}   "
               f"Trained model AUC: {report['model_auc']:.3f}   (hold-out n={report['test_n']})")
+        print(f"Calibration ({report['calibration']}): Brier "
+              f"{report['brier_raw']:.4f} -> {report['brier_cal']:.4f} (lower is better)")
         print("Top features: " + ", ".join(f"{f} {i:.0%}" for f, i in report["importances"][:4]))
         print(f"\n=== Deployed forward as of {report['asof'].date()} ===")
         print(f"{report['fwd_n']} current clients scored | {report['fwd_high']} at P(run-off) >= 0.5 | "
