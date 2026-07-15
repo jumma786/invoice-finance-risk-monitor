@@ -2,11 +2,16 @@
 SME Invoice Finance Risk & Exposure Monitor
 -------------------------------------------
 Pipeline that turns real transaction data (UCI Online Retail II) into
-invoice-finance risk metrics, then trains an early-warning default model.
+invoice-finance risk metrics, then trains an early-warning run-off model on the
+ledger's own forward outcomes (out-of-time, leakage-free).
 
-Real data sources this runs on:
+Real data source this runs on:
   - UCI Online Retail II  -> archive.ics.uci.edu/dataset/502  (invoice ledger)
-  - Lending Club Loan Data -> Kaggle                          (real default outcomes)
+
+The predictive label is derived from the ledger itself (a client going into
+run-off after a cutoff date), not an external default dataset: retail clients
+share no join key with e.g. Lending Club loans, so attaching those outcomes
+would be inventing labels. See README for the full rationale.
 
 Framing note: customers are treated as "clients", returns/credit-note invoices
 (prefix 'C') are treated as "dilution". The numbers are real; only the lending
@@ -124,9 +129,10 @@ def score_clients(metrics):
     each normalised to 0..1. This is a documented *rule*, not a trained model,
     so there is no target leakage - which is exactly how credit scorecards work.
 
-    To make this *predictive* rather than descriptive, join real default
-    outcomes (e.g. Lending Club) and fit a classifier on these same features;
-    the scorecard then becomes the explainable baseline to beat. See README.
+    To make this *predictive* rather than descriptive, see train_default_model:
+    it fits a classifier on these same features against the ledger's own
+    forward run-off outcome, and this scorecard becomes the explainable
+    baseline to beat. See README.
     """
     d = metrics.copy()
 
